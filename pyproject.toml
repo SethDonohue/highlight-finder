@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "highlight-finder"
+dynamic = ["version"]
+description = "Find the best moments in GoPro and phone trip footage, with you reviewing every pick."
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "pillow>=10",
+  "opentimelineio>=0.17",
+]
+
+[project.scripts]
+hlf = "hlf.cli:main"
+
+[tool.setuptools]
+packages = ["hlf"]
+
+[tool.setuptools.dynamic]
+version = {attr = "hlf.__version__"}
+
+[tool.setuptools.package-data]
+hlf = ["web/*"]

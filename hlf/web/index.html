@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Highlight Finder</title>
+<style>
+  :root { --bg:#111317; --panel:#1b1e24; --line:#2c3038; --ink:#eceef2; --quiet:#9aa1ad;
+          --keep:#3fb950; --rej:#f85149; --acc:#4c9aff; --warn:#d29922; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.4 -apple-system, system-ui, sans-serif; }
+  header { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line);
+           padding:10px 12px calc(8px); }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  select, input, button { font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line);
+           border-radius:8px; padding:7px 10px; }
+  button { cursor:pointer; }
+  button.on { border-color:var(--acc); color:#fff; background:#1f3352; }
+  .tabs button { flex:1; }
+  .stats { color:var(--quiet); font-size:13px; margin-top:6px; }
+  main { max-width:860px; margin:0 auto; padding:12px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; margin-bottom:14px; overflow:hidden; }
+  .card.focus { border-color:var(--acc); }
+  .card.kept { box-shadow:inset 4px 0 0 var(--keep); }
+  .card.rejected { box-shadow:inset 4px 0 0 var(--rej); opacity:.6; }
+  video { width:100%; display:block; background:#000; aspect-ratio:16/9; }
+  .meta { padding:10px 12px 0; }
+  .why { font-weight:600; }
+  .sub { color:var(--quiet); font-size:13px; }
+  .claude { margin-top:6px; font-size:13px; color:#c9d1ff; }
+  canvas { width:100%; height:44px; display:block; margin-top:8px; }
+  .ctl { padding:10px 12px 12px; display:grid; gap:8px; }
+  .big { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .big button { padding:12px; font-weight:600; }
+  .keep { border-color:var(--keep); } .keep.on { background:#183d22; }
+  .rej { border-color:var(--rej); } .rej.on { background:#4a1c1c; }
+  .nudge { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+  .nudge button { padding:6px 0; font-size:13px; }
+  .stars button { background:none; border:none; font-size:22px; padding:0 3px; color:#555; }
+  .stars button.on { color:var(--warn); }
+  .triage { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; padding:8px; }
+  .triage img { width:100%; border-radius:6px; display:block; }
+  .empty { color:var(--quiet); text-align:center; padding:40px 0; }
+  .hint { color:var(--quiet); font-size:12px; text-align:center; padding:8px 0 30px; }
+  code { background:#000; padding:2px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <select id="trip"></select>
+    <div class="row tabs" style="flex:1">
+      <button data-tab="hl" class="on">Highlights</button>
+      <button data-tab="junk">Junk</button>
+      <button data-tab="export">Export</button>
+    </div>
+  </div>
+  <div class="row" id="filters" style="margin-top:8px">
+    <button data-f="proposed" class="on">To review</button>
+    <button data-f="kept">Kept</button>
+    <button data-f="rejected">Rejected</button>
+    <button data-f="all">All</button>
+    <label class="sub"><input type="checkbox" id="featured" checked> top picks only</label>
+  </div>
+  <div class="stats" id="stats"></div>
+</header>
+<main id="main"></main>
+<div class="hint">Keys: K keep · X reject · [ ] move start · { } move end · 1–5 rate · Space next</div>
+<script>
+const $ = s => document.querySelector(s);
+const state = { trip:null, tab:'hl', filter:'proposed', items:[], focus:0, lanes:{} };
+const api = (p, body) => fetch(p, body ? {method:'POST', headers:{'Content-Type':'application/json'},
+  body:JSON.stringify(body)} : {}).then(r => r.json());
+const fmt = s => { s = Math.max(0, s); const m = Math.floor(s/60); return m + ':' + String((s%60).toFixed(1)).padStart(4,'0'); };
+
+async function loadTrips() {
+  const trips = await api('/api/trips');
+  const sel = $('#trip');
+  sel.innerHTML = trips.map(t => `<option>${esc(t.name)}</option>`).join('');
+  if (!trips.length) { $('#main').innerHTML = '<div class="empty">No trips yet. Run <code>hlf run --trip NAME /path/to/footage</code>.</div>'; return; }
+  state.trip = trips[0].name; state.trips = trips; render();
+}
+function esc(s){ return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function stats() {
+  const t = (state.trips||[]).find(t => t.name === state.trip); if (!t) return;
+  $('#stats').textContent = `${t.clips} clips · ${(t.seconds/3600).toFixed(1)} h · ${t.segments} proposals · ${t.kept} kept · ${t.junk} suggested junk`;
+}
+async function refreshTrips(){ state.trips = await api('/api/trips'); stats(); }
+
+async function render() {
+  stats();
+  $('#filters').style.display = state.tab === 'hl' ? '' : 'none';
+  if (state.tab === 'hl') return renderHighlights();
+  if (state.tab === 'junk') return renderJunk();
+  return renderExport();
+}
+
+async function renderHighlights() {
+  const feat = $('#featured').checked ? 1 : 0;
+  state.items = await api(`/api/segments?trip=${encodeURIComponent(state.trip)}&status=${state.filter}&featured=${feat}`);
+  state.focus = 0;
+  const main = $('#main');
+  if (!state.items.length) { main.innerHTML = '<div class="empty">Nothing here.</div>'; return; }
+  main.innerHTML = state.items.map((s, i) => card(s, i)).join('');
+  observe();
+  setFocus(0, false);
+}
+function card(s, i) {
+  const tags = JSON.parse(s.tags || '[]').join(', ');
+  return `<div class="card ${s.status}" id="c${i}" data-i="${i}">
+    <video preload="metadata" playsinline muted data-src="/media/proxy/${s.clip_id}.mp4" data-i="${i}"></video>
+    <div class="meta">
+      <div class="why">${esc(s.caption || s.why || 'Moment')}</div>
+      <div class="sub">${esc(s.clip_name)} · ${s.camera} · <span class="range">${fmt(s.start_s)}–${fmt(s.end_s)}</span> · score ${(s.score||0).toFixed(2)}</div>
+      ${s.caption && s.why ? `<div class="sub">${esc(s.why)}</div>` : ''}
+      ${s.claude_note ? `<div class="claude">Claude: ${esc(s.claude_note)}</div>` : ''}
+      <canvas data-clip="${s.clip_id}" data-i="${i}"></canvas>
+    </div>
+    <div class="ctl">
+      <div class="big">
+        <button class="keep ${s.status==='kept'?'on':''}" onclick="decide(${i},'kept')">Keep</button>
+        <button class="rej ${s.status==='rejected'?'on':''}" onclick="decide(${i},'rejected')">Reject</button>
+      </div>
+      <div class="nudge">
+        <button onclick="nudge(${i},'start_s',-1)">◀ start</button>
+        <button onclick="nudge(${i},'start_s',1)">start ▶</button>
+        <button onclick="nudge(${i},'end_s',-1)">◀ end</button>
+        <button onclick="nudge(${i},'end_s',1)">end ▶</button>
+      </div>
+      <div class="row">
+        <span class="stars">${[1,2,3,4,5].map(n => `<button class="${(s.rating||0)>=n?'on':''}" onclick="rate(${i},${n})">★</button>`).join('')}</span>
+        <input placeholder="tags, comma separated" value="${esc(tags)}" onchange="setTags(${i}, this.value)" style="flex:1;min-width:120px">
+      </div>
+      <input placeholder="note" value="${esc(s.note||'')}" onchange="update(${i},{note:this.value})">
+    </div>
+  </div>`;
+}
+
+function observe() {
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    const v = e.target;
+    if (e.isIntersecting) {
+      if (!v.getAttribute('src')) { v.src = v.dataset.src; v.load(); }
+      const s = state.items[+v.dataset.i];
+      const seek = () => { v.currentTime = s.start_s; v.play().catch(()=>{}); };
+      if (v.readyState >= 1) seek(); else v.addEventListener('loadedmetadata', seek, {once:true});
+    } else { v.pause(); }
+  }), {threshold:0.6});
+  document.querySelectorAll('video').forEach(v => {
+    io.observe(v);
+    v.addEventListener('timeupdate', () => {
+      const s = state.items[+v.dataset.i];
+      if (v.currentTime >= s.end_s || v.currentTime < s.start_s - 0.5) v.currentTime = s.start_s;
+      drawLane(+v.dataset.i, v.currentTime);
+    });
+    v.addEventListener('click', () => { v.muted = !v.muted; });
+  });
+  document.querySelectorAll('canvas').forEach(c => {
+    const i = +c.dataset.i;
+    loadLanes(+c.dataset.clip).then(() => drawLane(i));
+  });
+  document.querySelectorAll('.card').forEach(el => swipe(el));
+}
+async function loadLanes(cid){ if (!state.lanes[cid]) state.lanes[cid] = api(`/api/clip/${cid}/lanes`); return state.lanes[cid]; }
+const LANE_COLORS = {tel_accel_dev:'#f0883e', tel_speed:'#d29922', motion:'#4c9aff', audio_peak:'#a371f7', sharpness:'#3fb950'};
+async function drawLane(i, t) {
+  const s = state.items[i]; const c = document.querySelector(`canvas[data-i="${i}"]`); if (!c) return;
+  const lanes = await state.lanes[s.clip_id]; if (!lanes) return;
+  const w = c.width = c.clientWidth * devicePixelRatio, h = c.height = 44 * devicePixelRatio;
+  const g = c.getContext('2d'); const dur = s.clip_duration || 1;
+  g.fillStyle = 'rgba(76,154,255,.15)';
+  g.fillRect(s.start_s/dur*w, 0, (s.end_s-s.start_s)/dur*w, h);
+  for (const [k, arr] of Object.entries(lanes)) {
+    g.strokeStyle = LANE_COLORS[k] || '#888'; g.lineWidth = devicePixelRatio; g.beginPath();
+    arr.forEach((y, x) => { const px = x/arr.length*w, py = h - 2 - y*(h-4); x ? g.lineTo(px,py) : g.moveTo(px,py); });
+    g.stroke();
+  }
+  if (t != null) { g.fillStyle = '#fff'; g.fillRect(t/dur*w, 0, devicePixelRatio, h); }
+}
+function swipe(el) {
+  let x0 = null;
+  el.addEventListener('touchstart', e => { if (e.target.tagName !== 'INPUT') x0 = e.touches[0].clientX; }, {passive:true});
+  el.addEventListener('touchend', e => {
+    if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null;
+    if (Math.abs(dx) > 90) decide(+el.dataset.i, dx > 0 ? 'kept' : 'rejected');
+  });
+}
+async function update(i, patch) {
+  const s = await api(`/api/segment/${state.items[i].id}`, patch);
+  Object.assign(state.items[i], s);
+  const el = $('#c'+i); const keepOpen = el.querySelector('video');
+  el.className = `card ${s.status}` + (i === state.focus ? ' focus' : '');
+  el.querySelector('.keep').classList.toggle('on', s.status === 'kept');
+  el.querySelector('.rej').classList.toggle('on', s.status === 'rejected');
+  el.querySelectorAll('.stars button').forEach((b, k) => b.classList.toggle('on', (s.rating||0) > k));
+  el.querySelector('.range').textContent = `${fmt(s.start_s)}–${fmt(s.end_s)}`;
+  drawLane(i);
+  return s;
+}
+async function decide(i, status) {
+  const cur = state.items[i].status;
+  await update(i, {status: cur === status ? 'proposed' : status});
+  refreshTrips();
+  if (cur !== status) setFocus(Math.min(i+1, state.items.length-1), true);
+}
+function nudge(i, key, dir) { const s = state.items[i]; const v = +(s[key] + dir*0.5).toFixed(2);
+  if (key === 'start_s' && v >= s.end_s - 1) return; if (key === 'end_s' && v <= s.start_s + 1) return;
+  update(i, {[key]: v}); }
+function rate(i, n) { update(i, {rating: state.items[i].rating === n ? null : n}); }
+function setTags(i, v) { update(i, {tags: v.split(',').map(x => x.trim()).filter(Boolean)}); }
+function setFocus(i, scroll) {
+  document.querySelectorAll('.card.focus').forEach(e => e.classList.remove('focus'));
+  state.focus = i; const el = $('#c'+i); if (!el) return; el.classList.add('focus');
+  if (scroll) el.scrollIntoView({behavior:'smooth', block:'center'});
+}
+document.addEventListener('keydown', e => {
+  if (state.tab !== 'hl' || e.target.tagName === 'INPUT' || !state.items.length) return;
+  const i = state.focus;
+  const map = {k:()=>decide(i,'kept'), x:()=>decide(i,'rejected'), '[':()=>nudge(i,'start_s',-1), ']':()=>nudge(i,'start_s',1),
+               '{':()=>nudge(i,'end_s',-1), '}':()=>nudge(i,'end_s',1), ' ':()=>setFocus(Math.min(i+1,state.items.length-1),true),
+               ArrowDown:()=>setFocus(Math.min(i+1,state.items.length-1),true), ArrowUp:()=>setFocus(Math.max(i-1,0),true)};
+  if (map[e.key]) { e.preventDefault(); map[e.key](); }
+  else if ('12345'.includes(e.key)) rate(i, +e.key);
+});
+
+async function renderJunk() {
+  const rows = await api(`/api/triage?trip=${encodeURIComponent(state.trip)}`);
+  const pending = rows.filter(r => r.bucket === 'suggested_reject');
+  $('#main').innerHTML = (pending.length ? `<div class="row" style="margin-bottom:12px">
+      <button class="rej" onclick="confirmAll()">Confirm all ${pending.length} suggested rejects</button></div>` : '')
+    + (rows.length ? rows.map(r => `<div class="card ${r.bucket==='rejected'?'rejected':''}">
+      <div class="meta"><div class="why">${esc(r.bucket_reason || 'rejected')}</div>
+      <div class="sub">${esc(r.name)} · ${r.camera} · ${r.duration.toFixed(1)} s · ${r.bucket === 'rejected' ? 'rejected' : 'suggested'}</div></div>
+      <div class="triage">${r.thumbs.map(t => `<img loading="lazy" src="${t}">`).join('')}</div>
+      <div class="ctl"><div class="big">
+        <button class="rej" onclick="bucket(${r.id},'rejected')">Reject clip</button>
+        <button class="keep" onclick="bucket(${r.id},'candidate_confirmed')">Not junk, keep scoring</button>
+      </div></div></div>`).join('') : '<div class="empty">No junk suggested.</div>');
+  state.junk = pending;
+}
+async function bucket(id, b) { await api(`/api/clip/${id}/bucket`, {bucket:b}); await refreshTrips(); renderJunk(); }
+async function confirmAll() { for (const r of state.junk) await api(`/api/clip/${r.id}/bucket`, {bucket:'rejected'}); await refreshTrips(); renderJunk(); }
+
+function renderExport() {
+  $('#main').innerHTML = `<div class="card"><div class="meta">
+    <div class="why">Rough cut for DaVinci Resolve</div>
+    <div class="sub">Kept segments in story order on V1, camera audio on A1, captions and ratings as markers. Points at your untouched originals.</div></div>
+    <div class="ctl"><button class="keep" onclick="doExport()">Make rough cut</button><div id="exp" class="sub"></div></div></div>
+    <div class="card"><div class="meta"><div class="why">Final edit</div>
+    <div class="sub">Coming in the next build: music, beat-synced cuts, stabilization and color.</div></div><div class="ctl"></div></div>`;
+}
+async function doExport() {
+  $('#exp').textContent = 'Writing timeline…';
+  const r = await api('/api/export', {trip: state.trip});
+  $('#exp').innerHTML = r.error ? esc(r.error) :
+    `Saved <code>${esc(r.timeline)}</code> (${r.segments} segments).<br>In Resolve: File → Import → Timeline, choose this .otio file.`;
+}
+
+document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-tab]').forEach(x => x.classList.toggle('on', x === b));
+  state.tab = b.dataset.tab; render(); });
+document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-f]').forEach(x => x.classList.toggle('on', x === b));
+  state.filter = b.dataset.f; render(); });
+$('#featured').onchange = render;
+$('#trip').onchange = e => { state.trip = e.target.value; render(); };
+loadTrips();
+</script>
+</body>
+</html>
