@@ -1,9 +1,10 @@
-# Mac test checklist (v0.2.0)
+# Mac test checklist (v0.2.1)
 
 **Install (one line)**
 - [ ] Paste in Terminal: `curl -fsSL https://raw.githubusercontent.com/SethDonohue/highlight-finder/main/install.sh | bash`
 - [ ] It ends with "Done" and `doctor` shows ffmpeg, ffprobe, videotoolbox and otio as ok
 - [ ] Open a new Terminal window, type `hlf`: the menu appears
+- [ ] Arrow keys move the highlight (greyed-out items are skipped), Enter chooses, a number jumps straight there, q quits; the activity and Start? Yes/No work the same way
 - [ ] Paste the install line again: it finishes quickly (that's the update path)
 
 **Guided new trip**

@@ -4,7 +4,7 @@ Finds the best moments in GoPro and phone trip footage, flags junk, and hands yo
 
 ## Status
 
-**v0.2.0**: guided mode (just type `hlf`) and a one-line installer, on top of v0.1.0's ingest, GoPro telemetry, junk triage, highlight proposals, review UI (Mac and phone) and DaVinci Resolve rough cut. Next: AI signals (search, sound events, transcripts), then the rendered final cut. See `CHANGELOG.md` and `TEST-CHECKLIST.md`.
+**v0.2.1**: guided mode with arrow-key menus (just type `hlf`) and a one-line installer, on top of v0.1.0's ingest, GoPro telemetry, junk triage, highlight proposals, review UI (Mac and phone) and DaVinci Resolve rough cut. Next: AI signals (search, sound events, transcripts), then the rendered final cut. See `CHANGELOG.md` and `TEST-CHECKLIST.md`.
 
 ## Install on the Mac (one line, about 10 minutes)
 
@@ -22,7 +22,7 @@ The working folder (index, proxies, frames, exports) is `~/HighlightFinder`. Put
 
 ## Guided mode
 
-Type `hlf` on its own. It asks what you want to do, then walks you through it:
+Type `hlf` on its own. It asks what you want to do, then walks you through it. In menus, use the arrow keys and Enter (or press an option's number):
 
 - **Start a new trip:** asks for the footage folder (type it or drag the folder into the window), the trip name and the activity. Every question says if it's required or optional, why it's asked, and its default (Enter takes it). `?` explains more, `b` goes back, `q` quits. It then shows a summary and the equivalent command, and starts when you say so.
 - **While it runs:** a progress line per step (finding videos, reading clips, scoring) with time left. Ctrl+C pauses safely; pick **Continue a trip** later to pick up where it stopped. If a drive was unplugged or renamed, it says so and lets you point to the new location.

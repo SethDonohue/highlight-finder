@@ -6,6 +6,7 @@ without the owner choosing it.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -38,15 +39,130 @@ class Quit(Exception):
     """The owner typed q, Ctrl+C or Ctrl+D at a question."""
 
 
-class UI:
-    """Questions and messages. `inp` and `out` are swappable so tests can script a session."""
+def tty_keys():
+    """A reader of single key presses for a real terminal ("up", "down", "enter", "esc" or the character),
+    or None when there's no terminal (then menus fall back to typing a number). HLF_PLAIN=1 forces typing."""
+    if os.environ.get("HLF_PLAIN") or not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return None
+    try:
+        import select as sel
+        import termios
+        import tty
+    except ImportError:  # Windows
+        return None
 
-    def __init__(self, inp=input, out=None, color: bool | None = None):
+    fd = sys.stdin.fileno()
+
+    def read() -> str:
+        ch = os.read(fd, 1)
+        if ch == b"\x1b":
+            seq = b""
+            while len(seq) < 2 and sel.select([fd], [], [], 0.05)[0]:
+                seq += os.read(fd, 1)
+            return {b"[A": "up", b"[B": "down", b"OA": "up", b"OB": "down"}.get(seq, "esc" if not seq else "other")
+        if ch in (b"\r", b"\n"):
+            return "enter"
+        if ch == b"\x04":
+            raise EOFError
+        return ch.decode(errors="ignore")
+
+    @contextlib.contextmanager
+    def session():
+        """Keys arrive one at a time for the whole menu (Ctrl+C still interrupts); restored after."""
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            yield
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    read.session = session
+    return read
+
+
+class UI:
+    """Questions and messages. `inp`, `out` and `keys` are swappable so tests can script a session.
+
+    With `keys` (a function returning the next key press), menus and choices use the arrow keys;
+    without it, they ask for a number. Free text (folders, names) is always typed.
+    """
+
+    def __init__(self, inp=input, out=None, color: bool | None = None, keys="auto"):
         self.inp = inp
         self.out = out or sys.stdout
         tty = hasattr(self.out, "isatty") and self.out.isatty()
         self.tty = tty
         self.color = tty and not os.environ.get("NO_COLOR") if color is None else color
+        if keys == "auto":
+            keys = tty_keys() if (inp is input and self.out is sys.stdout) else None
+        self.keys = keys
+
+    def _key(self) -> str:
+        try:
+            return self.keys()
+        except (EOFError, KeyboardInterrupt, StopIteration):
+            self.out.write("\033[?25h")
+            self.say()
+            raise Quit from None
+
+    def select(self, options: list[tuple[str, str, bool]], default: int = 0, back: bool = False,
+               help: str | None = None) -> str:
+        """Arrow-key picker. options: (key, label, enabled). Up/down (or k/j) move, Enter chooses,
+        a number or an option's own key jumps straight to it. Returns the chosen key."""
+        on = [i for i, (_, _, e) in enumerate(options) if e]
+        cur = default if default in on else on[0]
+        width = max(20, shutil.get_terminal_size((80, 24)).columns - 1)
+        hint = "  ↑↓ move   Enter choose" + ("   ? help" if help else "") + ("   b back" if back else "") + "   q quit"
+        rows = len(options) + 1
+
+        def draw(first: bool) -> None:
+            if not first:
+                self.out.write(f"\033[{rows}A")
+            for i, (_, label, enabled) in enumerate(options):
+                text = f"  {'❯' if i == cur else ' '} {label}"[:width]
+                text = self.b(text) if i == cur else (text if enabled else self.dim(text))
+                self.out.write("\r\033[K" + text + "\n")
+            self.out.write("\r\033[K" + self.dim(hint[:width]) + "\n")
+            self.out.flush()
+
+        def step(d: int) -> int:
+            i = on.index(cur)
+            return on[(i + d) % len(on)]
+
+        self.out.write("\033[?25l")  # hide the cursor while choosing
+        draw(True)
+        raw = getattr(self.keys, "session", None)
+        try:
+            with raw() if raw else contextlib.nullcontext():
+                while True:
+                    k = self._key()
+                    if k in ("up", "k") and not any(o[0] == "k" for o in options):
+                        cur = step(-1)
+                    elif k in ("down", "j") and not any(o[0] == "j" for o in options):
+                        cur = step(1)
+                    elif k == "enter":
+                        return options[cur][0]
+                    elif k.lower() == "q" and not any(o[0] == "q" for o in options):
+                        raise Quit
+                    elif k in ("b", "esc") and back:
+                        raise Back
+                    elif k == "?" and help:
+                        self.out.write(f"  {help}\n")
+                        draw(True)
+                        continue
+                    else:
+                        hit = [i for i, o in enumerate(options) if o[0] == k.lower()]
+                        if not hit and k.isdigit() and 1 <= int(k) <= len(options):
+                            hit = [int(k) - 1]
+                        if hit and hit[0] in on:
+                            cur = hit[0]
+                            draw(False)
+                            return options[cur][0]
+                        continue
+                    draw(False)
+        finally:
+            self.out.write("\033[?25h")
+            self.out.flush()
 
     def say(self, s: str = "") -> None:
         print(s, file=self.out, flush=True)
@@ -72,6 +188,14 @@ class UI:
         self.say(self.b(f"{title} ({'required' if required else 'optional'})"))
         self.say(f"  {why}")
         keys = list(choices or {})
+        if self.keys and keys:
+            if example:
+                self.say(f"  Example: {example}")
+            start = keys.index(default) if default in keys else 0
+            got = self.select([(k, f"{k:<11} {choices[k]}", True) for k in keys], start, back=back, help=more)
+            if check:
+                return check(got)
+            return got
         for n, k in enumerate(keys, 1):
             self.say(f"    {n}) {k:<11} {choices[k]}")
         if example:
@@ -113,6 +237,9 @@ class UI:
             return raw
 
     def yes(self, question: str, default: bool = True, back: bool = False) -> bool:
+        if self.keys:
+            self.say(question)
+            return self.select([("y", "Yes", True), ("n", "No", True)], 0 if default else 1, back=back) == "y"
         hint = "Y/n" if default else "y/N"
         while True:
             raw = self._read(f"{question} [{hint}] ").strip().lower()
@@ -132,6 +259,11 @@ class UI:
         """options: (key, label, enabled). Returns the chosen key; q always quits."""
         self.say()
         self.say(self.b(title))
+        if self.keys:
+            got = self.select([*((k, f"{k}) {label}", on) for k, label, on in options), ("q", "q) Quit", True)])
+            if got == "q":
+                raise Quit
+            return got
         for key, label, on in options:
             self.say(f"  {key}) {label}" if on else self.dim(f"  {key}) {label}"))
         self.say(self.dim("  q) Quit"))

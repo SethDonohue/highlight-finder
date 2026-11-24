@@ -1,6 +1,7 @@
 """Guided mode, driven by scripted answers on made-up footage. Needs ffmpeg."""
 import io
 import shutil
+import sys
 import sqlite3
 from pathlib import Path
 
@@ -12,22 +13,36 @@ from hlf.cli import main
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
 
 
-def session(home, answers, **kw):
-    """Run the guide with these answers typed in order; return everything it printed."""
-    it = iter(answers)
+def feeder(items):
+    it = iter(items)
 
-    def inp(prompt):
+    def nxt(*_):
         try:
             return next(it)
         except StopIteration:
             raise EOFError from None
+    return nxt, it
 
+
+def session(home, answers, keys=None, **kw):
+    """Run the guide with these answers typed in order (and, with `keys`, these key presses for
+    menus); return everything it printed."""
+    inp, it = feeder(answers)
+    kfn, kit = feeder(keys) if keys is not None else (None, iter(()))
     out = io.StringIO()
-    g = guide.Guide(home, guide.UI(inp, out, color=False), **kw)
+    g = guide.Guide(home, guide.UI(inp, out, color=False, keys=kfn), **kw)
     g.run()
-    left = list(it)
+    left, kleft = list(it), list(kit)
     assert not left, f"answers not used: {left}\n{out.getvalue()}"
+    assert not kleft, f"keys not used: {kleft}\n{out.getvalue()}"
     return out.getvalue()
+
+
+def picker(keys, options, **kw):
+    kfn, _ = feeder(keys)
+    out = io.StringIO()
+    ui = guide.UI(lambda p: "", out, color=False, keys=kfn)
+    return ui.select(options, **kw), out.getvalue()
 
 
 # ---------- pure helpers ----------
@@ -188,3 +203,68 @@ def test_installer_parses():
     import subprocess
     root = Path(__file__).resolve().parents[1]
     assert subprocess.run(["bash", "-n", str(root / "install.sh")]).returncode == 0
+
+
+# ---------- arrow keys ----------
+
+OPTS = [("1", "One", True), ("2", "Two (later)", False), ("3", "Three", True), ("4", "Four", True)]
+
+
+def test_arrows_move_and_skip_unavailable():
+    assert picker(["down", "enter"], OPTS)[0] == "3"          # skips the greyed-out one
+    assert picker(["down", "down", "down", "enter"], OPTS)[0] == "1"   # wraps around
+    assert picker(["up", "enter"], OPTS)[0] == "4"
+    assert picker(["j", "j", "k", "enter"], OPTS)[0] == "3"   # j/k work too
+    assert picker(["enter"], OPTS, default=2)[0] == "3"      # starts on the default
+
+
+def test_arrows_shortcuts_and_exits():
+    assert picker(["4"], OPTS)[0] == "4"                      # number jumps straight there
+    assert picker(["2", "x", "3"], OPTS)[0] == "3"           # unavailable and unknown keys are ignored
+    with pytest.raises(guide.Quit):
+        picker(["q"], OPTS)
+    with pytest.raises(guide.Back):
+        picker(["esc"], OPTS, back=True)
+    assert picker(["esc", "enter"], OPTS)[0] == "1"          # no back here: Esc is ignored
+    choice, out = picker(["?", "enter"], OPTS, help="EXTRA HELP")
+    assert choice == "1" and "EXTRA HELP" in out
+    assert "↑↓ move" in out and "❯ One" in out
+
+
+def test_arrow_yes_no_and_choices():
+    kfn, _ = feeder(["down", "enter"])
+    ui = guide.UI(lambda p: "", io.StringIO(), color=False, keys=kfn)
+    assert ui.yes("Start?") is False
+    kfn, _ = feeder(["n"])
+    ui.keys = kfn
+    assert ui.yes("Start?") is False
+    kfn, _ = feeder(["enter"])
+    ui.keys = kfn
+    assert ui.ask("Activity", why="w", choices=guide.PROFILE_HELP, default="travel") == "travel"
+    kfn, _ = feeder(["down", "enter"])
+    ui.keys = kfn
+    assert ui.ask("Activity", why="w", choices=guide.PROFILE_HELP, default="mtb") == "snowboard"
+
+
+@needs_ffmpeg
+def test_new_trip_with_arrow_keys(footage, tmp_path):
+    home = tmp_path / "home"
+    text = session(
+        home,
+        [str(footage), "Moab", ""],          # typed: folder, name, no more folders
+        keys=["enter",                        # main menu: Start a new trip (first option)
+              "down", "down", "enter",        # activity: mtb -> snowboard -> pickleball
+              "enter",                        # Start? Yes
+              "down", "down", "down", "enter",  # next steps: final cut (coming later)
+              "6",                            # back to main menu
+              "q"])
+    assert "↑↓ move" in text and "✓ Scoring" in text and "coming in a later version" in text
+    con = sqlite3.connect(home / "index.db")
+    assert con.execute("SELECT profile FROM trips WHERE name='Moab'").fetchone()[0] == "pickleball"
+
+
+def test_typed_menus_without_a_terminal(monkeypatch):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
+    assert guide.tty_keys() is None
+    monkeypatch.setenv("HLF_PLAIN", "1")
+    assert guide.tty_keys() is None
