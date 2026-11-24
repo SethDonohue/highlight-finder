@@ -2,7 +2,7 @@
 
 Personal tool that sorts GoPro and Samsung phone trip footage: flags junk, proposes highlights, and produces a DaVinci Resolve rough cut (and later a rendered final edit). Python CLI + local web review UI. It runs on the owner's M1 Mac, where the footage lives on external drives. The owner mostly works from a phone, so explain things simply and briefly.
 
-Design: "Trip Footage Highlight Finder - Program Spec" (https://claude.ai/artifact/9UiXUyRQokSpKaBVu4kFfK). Operating it on a trip is covered by the `trip-footage-review` skill.
+Design: the "Trip Footage Highlight Finder - Program Spec" (kept in the owner's Claude account, not in this repo). Operating it on a trip is covered by the `trip-footage-review` skill.
 
 ## Stack
 - Python 3.10+ (3.12 on the Mac), standard library HTTP server, SQLite
