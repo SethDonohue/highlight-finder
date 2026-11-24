@@ -34,4 +34,5 @@ Design: "Trip Footage Highlight Finder - Program Spec" (https://claude.ai/artifa
 - Settings changes go through `hlf set ... --reason` so `tuning-log.md` keeps the history.
 
 ## Commits
-End commit messages with the attribution lines the session provides.
+- Author every commit as the owner's GitHub identity: `git config user.name "Seth Donohue"` and `git config user.email "31681651+SethDonohue@users.noreply.github.com"` (check with `git config user.email` before the first commit in a session; never commit as "Claude").
+- End commit messages with the attribution lines the session provides.
