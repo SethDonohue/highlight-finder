@@ -4,30 +4,33 @@ Finds the best moments in GoPro and phone trip footage, flags junk, and hands yo
 
 ## Status
 
-**v0.1.0**: spec phases 0–2. Ingest, GoPro telemetry, junk triage, highlight proposals, review UI (Mac and phone), DaVinci Resolve rough cut. Next: AI signals (search, sound events, transcripts), then the rendered final edit. See `CHANGELOG.md` and `TEST-CHECKLIST.md`.
+**v0.2.0**: guided mode (just type `hlf`) and a one-line installer, on top of v0.1.0's ingest, GoPro telemetry, junk triage, highlight proposals, review UI (Mac and phone) and DaVinci Resolve rough cut. Next: AI signals (search, sound events, transcripts), then the rendered final cut. See `CHANGELOG.md` and `TEST-CHECKLIST.md`.
 
-## Install on the M1 Mac (once, about 10 minutes)
+## Install on the Mac (one line, about 10 minutes)
 
-1. Install [Homebrew](https://brew.sh) if you don't have it, then:
-   ```
-   brew install ffmpeg python@3.12 gh
-   gh auth login
-   ```
-2. Make a home for the program and install the latest release:
-   ```
-   python3.12 -m venv ~/hlf-venv
-   source ~/hlf-venv/bin/activate
-   gh release download -R SethDonohue/highlight-finder -p '*.whl' -D /tmp/hlf --clobber
-   pip install --upgrade /tmp/hlf/*.whl
-   hlf doctor
-   ```
-   `doctor` should say ffmpeg, ffprobe, videotoolbox and otio are ok. Run `source ~/hlf-venv/bin/activate` in each new terminal before using `hlf`.
+Open Terminal and paste:
 
-**Upgrading** to a new release: the same `gh release download ... && pip install --upgrade ...` lines (add the tag, e.g. `gh release download v0.2.0 ...`, for a specific version). Your working folder and decisions are kept.
+```
+curl -fsSL https://raw.githubusercontent.com/SethDonohue/highlight-finder/main/install.sh | bash
+```
+
+It installs Homebrew if you don't have it (asks for your Mac password once), then ffmpeg, Python 3.12 and the newest Highlight Finder release, and puts `hlf` on your PATH. When it says Done, open a new Terminal window and type `hlf`.
+
+**Updating:** paste the same line again. Your working folder and decisions are kept.
 
 The working folder (index, proxies, frames, exports) is `~/HighlightFinder`. Put it elsewhere with `--home /Volumes/Work/HighlightFinder` or `export HLF_HOME=...`. It needs roughly 1 GB per hour of footage.
 
-## Use it on a trip
+## Guided mode
+
+Type `hlf` on its own. It asks what you want to do, then walks you through it:
+
+- **Start a new trip:** asks for the footage folder (type it or drag the folder into the window), the trip name and the activity. Every question says if it's required or optional, why it's asked, and its default (Enter takes it). `?` explains more, `b` goes back, `q` quits. It then shows a summary and the equivalent command, and starts when you say so.
+- **While it runs:** a progress line per step (finding videos, reading clips, scoring) with time left. Ctrl+C pauses safely; pick **Continue a trip** later to pick up where it stopped. If a drive was unplugged or renamed, it says so and lets you point to the new location.
+- **When it's done:** a summary (possible junk, highlight picks) and next steps: review on the Mac, review on your phone, make the Resolve rough cut, add more footage. **Final cut** is listed but arrives in a later version.
+
+It remembers your last folder and activity, so the next trip is mostly pressing Enter. Everything below can also be done with commands.
+
+## Commands (optional)
 
 ```
 hlf run --trip "Whistler 2026" --profile mtb "/Volumes/GoPro SSD/Whistler" "/Volumes/GoPro SSD/Phone"

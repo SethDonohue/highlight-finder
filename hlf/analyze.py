@@ -198,15 +198,22 @@ def run_signals(con, home: Path, clip, settings) -> None:
     db.set_stage(con, cid, "signals", "done")
 
 
-def analyze_trip(con, home: Path, trip, settings, log=print) -> dict:
+def analyze_trip(con, home: Path, trip, settings, log=print, progress=None) -> dict:
+    """Read every clip once. `progress(i, n, clip, done_seconds, total_seconds)` is called before each
+    clip still to do, and once more at the end with clip=None."""
     clips = con.execute("SELECT * FROM clips WHERE trip_id=? ORDER BY creation_time, name",
                         (trip["id"],)).fetchall()
+    total_s = sum(c["duration"] or 0 for c in clips)
+    done_s = 0.0
     done = failed = 0
     for i, c in enumerate(clips, 1):
         try:
             if all(db.stage_status(con, c["id"], s) == "done" for s in ("telemetry", "decode", "signals")):
                 done += 1
+                done_s += c["duration"] or 0
                 continue
+            if progress:
+                progress(i, len(clips), c, done_s, total_s)
             log(f"[{i}/{len(clips)}] {c['name']} ({c['duration']:.0f}s, {c['camera']})")
             run_telemetry(con, home, c, settings)
             run_decode(con, home, c, settings, log)
@@ -215,4 +222,7 @@ def analyze_trip(con, home: Path, trip, settings, log=print) -> dict:
         except Exception as e:  # keep going; the clip can be retried
             failed += 1
             log(f"  failed: {e}")
+        done_s += c["duration"] or 0
+    if progress:
+        progress(len(clips), len(clips), None, total_s, total_s)
     return {"clips": len(clips), "analyzed": done, "failed": failed}

@@ -258,3 +258,5 @@ def serve(home: Path, port: int = 8765, lan: bool = False) -> None:
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        httpd.server_close()

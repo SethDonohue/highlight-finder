@@ -189,11 +189,16 @@ def cmd_doctor(a):
     sys.exit(0 if ok else 1)
 
 
+def cmd_guide(a):
+    from . import guide
+    guide.main(_home(a))
+
+
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="hlf", description="Highlight Finder")
+    p = argparse.ArgumentParser(prog="hlf", description="Highlight Finder. Run `hlf` with no command for the guided mode.")
     p.add_argument("--home", help="working folder (default ~/HighlightFinder or $HLF_HOME)")
     p.add_argument("--version", action="version", version=f"hlf {__version__}")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    sub = p.add_subparsers(dest="cmd")
 
     def trip_arg(sp, required=True):
         sp.add_argument("--trip", required=required)
@@ -234,7 +239,13 @@ def main(argv=None):
     s.add_argument("kind", choices=["roughcut", "clips"]); trip_arg(s); s.add_argument("--out")
     s.set_defaults(f=cmd_export)
     s = sub.add_parser("doctor", help="check tools are installed"); s.set_defaults(f=cmd_doctor)
+    s = sub.add_parser("guide", help="guided mode (same as running `hlf` alone)"); s.set_defaults(f=cmd_guide)
     a = p.parse_args(argv)
+    if a.cmd is None:
+        if not sys.stdin.isatty():
+            p.print_help()
+            return
+        a.f = cmd_guide
     a.f(a)
 
 

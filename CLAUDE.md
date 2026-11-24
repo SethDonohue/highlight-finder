@@ -26,8 +26,9 @@ Design: the "Trip Footage Highlight Finder - Program Spec" (kept in the owner's 
 - Before releasing: `python -m pytest -q tests` passes (needs ffmpeg; the end-to-end test generates made-up clips).
 - Steps: bump `__version__` in `hlf/__init__.py` (release tag is `v<__version__>`; patch for fixes, minor for features) → update README "Status", `CHANGELOG.md` and `TEST-CHECKLIST.md` → commit and push to `main` → start the workflow with `gh api -X POST repos/SethDonohue/highlight-finder/actions/workflows/release.yml/dispatches -f ref=main` → watch it (`gh run list --workflow release.yml`) → confirm the release and its wheel exist.
 - The workflow tests on Linux, builds the wheel and a source zip, and publishes the GitHub Release. It refuses a tag that doesn't match `__version__` or already exists.
-- Always send the owner the link to the release page, the one-line upgrade command, and what to test on the Mac.
-- Upgrade on the Mac: `gh release download vX.Y.Z -R SethDonohue/highlight-finder -p '*.whl' -D /tmp/hlf && pip install --upgrade /tmp/hlf/*.whl` (inside the program's venv). The working folder `~/HighlightFinder` and its index survive upgrades.
+- Always send the owner the link to the release page, the one-line install/upgrade command, and what to test on the Mac.
+- Guided mode (`hlf` alone) lives in `hlf/guide.py`; keep it in step with new commands and phases (for example, wire the Final cut menu item when Phase 4 lands).
+- Install or upgrade on the Mac: `curl -fsSL https://raw.githubusercontent.com/SethDonohue/highlight-finder/main/install.sh | bash` (`install.sh` in this repo; it installs into `~/.highlight-finder/venv` and links `hlf` into Homebrew's bin). The working folder `~/HighlightFinder` and its index survive upgrades.
 
 ## Data
 - `index.db` schema changes must be additive (new tables/columns with defaults) or come with a migration; never drop the owner's decisions, ratings or notes.

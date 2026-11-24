@@ -1,26 +1,29 @@
-# Mac test checklist (v0.1.0)
+# Mac test checklist (v0.2.0)
 
-**Install**
-- [ ] `brew install ffmpeg python@3.12 gh`, then `gh auth login`
-- [ ] `python3.12 -m venv ~/hlf-venv && source ~/hlf-venv/bin/activate`
-- [ ] `gh release download v0.1.0 -R SethDonohue/highlight-finder -p '*.whl' -D /tmp/hlf && pip install /tmp/hlf/*.whl`
-- [ ] `hlf doctor`: ffmpeg, ffprobe, videotoolbox and otio all say ok
+**Install (one line)**
+- [ ] Paste in Terminal: `curl -fsSL https://raw.githubusercontent.com/SethDonohue/highlight-finder/main/install.sh | bash`
+- [ ] It ends with "Done" and `doctor` shows ffmpeg, ffprobe, videotoolbox and otio as ok
+- [ ] Open a new Terminal window, type `hlf`: the menu appears
+- [ ] Paste the install line again: it finishes quickly (that's the update path)
 
-**One trip-day first**
-- [ ] `hlf run --trip "Test day" --profile mtb /Volumes/<drive>/<one day folder>` finishes; note how long it took per hour of footage
-- [ ] Unplug the drive mid-run, plug it back, run again: it resumes instead of starting over
-- [ ] `hlf status --trip "Test day"`: GoPro clips show telemetry; chapter files became one clip
+**Guided new trip**
+- [ ] 1) Start a new trip. Drag a one-day folder into the window: it shows how many videos (GoPro vs phone), hours and GB
+- [ ] Try Enter on the folder question (says it's required), `?` (more help) and `b` (goes back)
+- [ ] Trip name default makes sense (not "DCIM" or "100GOPRO"); activity accepts a number or a name
+- [ ] The summary shows free space and a `hlf run ...` command; Enter starts it
 
-**Review**
-- [ ] `hlf serve`: proposals play and loop inside their start/end
-- [ ] Keep, reject, nudge start/end, rate, tag; refresh the page and it's all still there
-- [ ] Junk tab: are the suggested rejects really junk? Rescue any that aren't
-- [ ] `hlf serve --lan`: open the printed link on your phone, keep/reject by swiping
+**While it runs**
+- [ ] Progress lines update in place; time left appears after a few clips
+- [ ] Press Ctrl+C mid-run: it says Paused. Run `hlf` again: the menu shows "x of y clips read"; Continue a trip finishes it
+- [ ] Unplug the drive, then Continue a trip: it says the videos can't be found and offers to check again or point to them
 
-**Resolve**
-- [ ] Export tab → Make rough cut; in Resolve: File → Import → Timeline → the .otio
-- [ ] Clips link to your originals, in order, with markers; you can extend a trim past the cut
-- [ ] If any 10-bit GoPro clip shows as audio-only in free Resolve, note which camera/mode
+**Next steps**
+- [ ] Review on this Mac opens your browser; Ctrl+C in Terminal comes back to the menu
+- [ ] Review on your phone prints a link that works on your phone (same Wi-Fi)
+- [ ] Rough cut before keeping anything: it tells you to review first. After keeping some: makes the .otio and offers to show it in Finder
+- [ ] In Resolve: File > Import > Timeline > the .otio; clips link to originals with markers
+- [ ] Final cut shows "coming in a later version"
 
 **Report back**
-- [ ] Rough share of proposals you kept, and anything it missed that you remember
+- [ ] Any question that was confusing, a default that was wrong, or a step that felt slow
+- [ ] Rough share of picks you kept, and anything it missed

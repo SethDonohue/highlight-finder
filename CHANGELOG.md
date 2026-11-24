@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.0 (2026-11-24)
+- Guided mode: run `hlf` alone for a menu that walks you through a trip. Each question says if it's required or optional, why, and its default; `?` help, `b` back, `q` quit. Drag-and-drop folders work.
+- Progress while it runs: a line per step with a bar, count, time left and the current file. Ctrl+C pauses safely; Continue a trip resumes.
+- Next steps when done: review on the Mac or phone, Resolve rough cut (only after you keep picks), add footage. Final cut is listed as coming later.
+- Finds footage again if a drive was unplugged or renamed.
+- One-line installer (`install.sh`) that also updates.
+
 ## v0.1.0 (2026-11-24)
 - Ingest GoPro and phone footage; stitch GoPro chapter files; use `.LRV` proxies when present.
 - GoPro telemetry straight from the file: motion, airtime, GPS speed, HiLight tags.

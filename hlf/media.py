@@ -129,11 +129,13 @@ def describe(path: Path) -> dict:
     }
 
 
-def ingest(con, trip_id: int, paths: list[Path], log=print) -> dict:
+def ingest(con, trip_id: int, paths: list[Path], log=print, progress=None) -> dict:
     files = discover(paths)
     log(f"Found {len(files)} video files.")
     new_ids = []
     for i, f in enumerate(files, 1):
+        if progress:
+            progress(i, len(files), f)
         fp = fingerprint(f)
         row = con.execute("SELECT id, path FROM source_files WHERE trip_id=? AND fingerprint=?",
                           (trip_id, fp)).fetchone()
